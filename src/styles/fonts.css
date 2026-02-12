@@ -1,0 +1,39 @@
+/* ==========================================================================
+   Typography: Neue Haas Display
+   ==========================================================================
+   Primary typeface: "Neue Haas Grotesk Display Pro"
+   Fallback stack: Neue Haas Grotesk Display → Neue Haas Display → Helvetica Neue → Helvetica → Arial → sans-serif
+   
+   If self-hosting the font, add @font-face declarations below.
+   The font-family stack is defined in theme.css via --font-sans.
+   ========================================================================== */
+
+/* CDN / Google Fonts alternative: uncomment if using a web-hosted version */
+/* @font-face {
+  font-family: 'Neue Haas Grotesk Display Pro';
+  src: url('/fonts/NeueHaasDisplay-Regular.woff2') format('woff2');
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'Neue Haas Grotesk Display Pro';
+  src: url('/fonts/NeueHaasDisplay-Medium.woff2') format('woff2');
+  font-weight: 500;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'Neue Haas Grotesk Display Pro';
+  src: url('/fonts/NeueHaasDisplay-SemiBold.woff2') format('woff2');
+  font-weight: 600;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'Neue Haas Grotesk Display Pro';
+  src: url('/fonts/NeueHaasDisplay-Bold.woff2') format('woff2');
+  font-weight: 700;
+  font-style: normal;
+  font-display: swap;
+} */
