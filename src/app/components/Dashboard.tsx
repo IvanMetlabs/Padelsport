@@ -2,17 +2,22 @@ import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { GlassCard } from './ui/GlassCard';
 import { Wallet, LogOut, Plus, X, CheckCircle } from 'lucide-react';
+import { useAuth } from './auth/AuthContext';
+import { projectId, publicAnonKey } from '/utils/supabase/info';
 import levelBronceIcon from 'figma:asset/2f6670d60dd5cc86dab83c47df4253843ecc98b3.png';
 import levelPlataIcon from 'figma:asset/ff4c7438fb1b4a1ba5b98cf37a252a8685120d78.png';
 import levelOroIcon from 'figma:asset/e8d9edf8b7198cc8ba5090ca2e709ef02f67625d.png';
 import PresaleWidget from '@/imports/PresaleWidget-78-1195';
+
+const SERVER_URL = `https://${projectId}.supabase.co/functions/v1/make-server-a024ec43`;
 
 interface DashboardProps {
   balance: number;
   onDisconnect: () => void;
 }
 
-export const Dashboard = ({ balance: initialBalance = 200, onDisconnect }: DashboardProps) => {
+export const Dashboard = ({ balance: initialBalance = 0, onDisconnect }: DashboardProps) => {
+  const { session, profile, fetchProfile } = useAuth();
   const [balance, setBalance] = useState(initialBalance);
   const [isBuyModalOpen, setIsBuyModalOpen] = useState(false);
   const [showSuccess, setShowSuccess] = useState(false);
@@ -48,12 +53,37 @@ export const Dashboard = ({ balance: initialBalance = 200, onDisconnect }: Dashb
 
   const progress = getProgress();
 
-  const handleBuy = (amount: number) => {
-    setBalance(prev => prev + amount);
-    setIsBuyModalOpen(false);
-    setShowSuccess(true);
-    // Auto hide success after 3 seconds
-    setTimeout(() => setShowSuccess(false), 3000);
+  const handleBuy = async (amount: number) => {
+    try {
+      const accessToken = session?.access_token;
+      if (!accessToken) {
+        console.log('No access token for buy-tokens');
+        return;
+      }
+
+      const res = await fetch(`${SERVER_URL}/auth/buy-tokens`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${accessToken}`,
+        },
+        body: JSON.stringify({ amount }),
+      });
+
+      const data = await res.json();
+      if (res.ok && data.success) {
+        setBalance(data.newBalance);
+        setIsBuyModalOpen(false);
+        setShowSuccess(true);
+        setTimeout(() => setShowSuccess(false), 3000);
+        // Refresh profile to sync
+        fetchProfile();
+      } else {
+        console.log('Token purchase error:', data.error);
+      }
+    } catch (err) {
+      console.log('Error during token purchase:', err);
+    }
   };
 
 
@@ -62,7 +92,20 @@ export const Dashboard = ({ balance: initialBalance = 200, onDisconnect }: Dashb
       <div className="max-w-4xl w-full space-y-8">
         {/* Header */}
         <div className="flex justify-between items-center">
-          <h1 className="text-3xl font-bold text-white">Mi Panel</h1>
+          <div>
+            <h1 className="text-3xl font-bold text-white">Mi Panel</h1>
+            {profile?.walletAddress && (
+              <div className="flex items-center gap-2 mt-1">
+                <div className={`w-2 h-2 rounded-full ${profile.walletType === 'external' ? 'bg-[#00ffe6]' : 'bg-purple-400'}`} />
+                <span className="text-[#99a1af] text-xs font-mono">
+                  {profile.walletAddress.slice(0, 6)}...{profile.walletAddress.slice(-4)}
+                </span>
+                <span className="text-[#99a1af]/50 text-[10px] uppercase">
+                  ({profile.walletType === 'external' ? 'Wallet externa' : 'Wallet interna'})
+                </span>
+              </div>
+            )}
+          </div>
           <button 
             onClick={onDisconnect}
             className="flex items-center gap-2 text-sm text-[#99a1af] hover:text-white transition-colors"

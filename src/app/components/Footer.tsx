@@ -94,7 +94,7 @@ function FooterLink({ text, onClick, href }: { text: string, onClick?: () => voi
 function FooterLinks({ onShowStyleGuide }: { onShowStyleGuide?: () => void }) {
   return (
     <div className="content-stretch flex flex-wrap gap-[20px] md:gap-[32px] items-center justify-center md:justify-end min-h-px min-w-px pb-[10px] relative">
-      <FooterLink text="Design System" onClick={onShowStyleGuide} />
+      <FooterLink text="Design System" href="/style-guide" />
       <FooterLink text="Privacidad" href="#" />
       <FooterLink text="Términos" href="#" />
       <FooterLink text="Cookies" href="#" />
@@ -106,7 +106,7 @@ function Frame2({ onShowStyleGuide }: { onShowStyleGuide?: () => void }) {
   return (
     <div className="content-stretch flex flex-col md:flex-row gap-[24px] items-center justify-between relative shrink-0 w-full max-w-[1196px]">
       <ImagePadelSportClub />
-      <FooterLinks onShowStyleGuide={onShowStyleGuide} />
+      <FooterLinks />
     </div>
   );
 }
@@ -122,7 +122,7 @@ function Copyright() {
 function FooterContent({ onShowStyleGuide }: { onShowStyleGuide?: () => void }) {
   return (
     <div className="content-stretch flex flex-col gap-[36px] items-center md:items-start relative shrink-0 w-full max-w-[1196px]">
-      <Frame2 onShowStyleGuide={onShowStyleGuide} />
+      <Frame2 />
       <Copyright />
     </div>
   );
@@ -133,7 +133,7 @@ function FooterBottom({ onShowStyleGuide }: { onShowStyleGuide?: () => void }) {
     <div className="relative shrink-0 w-full" data-name="Footer">
       <div className="flex flex-col items-center size-full">
         <div className="content-stretch flex flex-col items-center p-6 md:p-[48px] relative w-full">
-          <FooterContent onShowStyleGuide={onShowStyleGuide} />
+          <FooterContent />
         </div>
       </div>
     </div>
@@ -142,7 +142,7 @@ function FooterBottom({ onShowStyleGuide }: { onShowStyleGuide?: () => void }) {
 
 // --- Main Component ---
 
-export const Footer = ({ onShowStyleGuide }: { onShowStyleGuide?: () => void }) => {
+export const Footer = ({ onShowStyleGuide }: { onShowStyleGuide?: () => void } = {}) => {
   return (
     <div className="content-stretch flex flex-col items-start relative size-full bg-black overflow-hidden" data-name="footer">
       <div aria-hidden="true" className="absolute inset-0 pointer-events-none">
@@ -152,7 +152,7 @@ export const Footer = ({ onShowStyleGuide }: { onShowStyleGuide?: () => void }) 
         <div className="absolute inset-0" style={{ backgroundImage: "linear-gradient(-9.28937e-09deg, rgba(0, 0, 0, 0) 65.023%, rgb(0, 0, 0) 100.03%), linear-gradient(rgba(0, 0, 0, 0.5) 0%, rgb(0, 0, 0) 100%)" }} />
       </div>
       <Cta />
-      <FooterBottom onShowStyleGuide={onShowStyleGuide} />
+      <FooterBottom />
     </div>
   );
 };

@@ -13,7 +13,7 @@ import imgZarapps from "figma:asset/6a05a2a0f6e828fa14f56cbc7f8d93de86892475.png
 import imgSerbo from "figma:asset/e3a9875e60022da657a0d6766e0369eb5a4c18db.png";
 
 const MetlabsLogo = () => (
-  <svg className="w-[184px] h-[31px]" viewBox="0 0 184 31" fill="none">
+  <svg className="w-[184px] h-[31px] flex-shrink-0" viewBox="0 0 184 31" fill="none">
     <g>
         <path d={svgPaths.p112c70b0} fill="white" />
         <path d={svgPaths.p2165ca00} fill="white" />
@@ -27,6 +27,56 @@ const MetlabsLogo = () => (
         <path d={svgPaths.p309ec800} fill="white" />
     </g>
   </svg>
+);
+
+// Alliance item data
+const allianceItems = [
+  {
+    id: 'zarapps',
+    description: 'En el desarrollo de la aplicación mobile',
+    logo: <img src={imgZarapps} alt="Zarapps" className="h-[50px] w-auto object-contain transition-transform duration-300 group-hover/item:scale-110" />,
+    url: 'https://zarapps.com',
+  },
+  {
+    id: 'serbo',
+    description: 'Entidad creadora',
+    logo: <img src={imgSerbo} alt="Serbo Network" className="h-[50px] w-auto object-contain transition-transform duration-300 group-hover/item:scale-110" />,
+    url: 'https://serbo.network',
+  },
+  {
+    id: 'metlabs',
+    description: 'Infraestructura Web3',
+    logo: <MetlabsLogo />,
+    url: 'https://metlabs.io',
+  },
+];
+
+interface AllianceItemProps {
+  description: string;
+  logo: React.ReactNode;
+  url: string;
+}
+
+const AllianceItem: React.FC<AllianceItemProps> = ({ description, logo, url }) => (
+  <motion.div
+    initial={{ opacity: 0, y: 12 }}
+    whileInView={{ opacity: 1, y: 0 }}
+    viewport={{ once: true }}
+    transition={{ duration: 0.4 }}
+    className="group/item flex flex-col md:flex-row gap-6 py-8 border-b border-[#404040] items-center min-h-[100px] transition-colors duration-300 hover:bg-white/[0.03] rounded-lg px-4 -mx-4 cursor-default"
+  >
+    <p className="flex-1 text-white/70 text-xl md:text-2xl transition-colors duration-300 group-hover/item:text-white text-left">
+      {description}
+    </p>
+    <a
+      href={url}
+      target="_blank"
+      rel="noopener noreferrer"
+      className="flex items-center justify-center h-[60px] transition-opacity duration-300 opacity-60 group-hover/item:opacity-100"
+    >
+      {logo}
+    </a>
+  </motion.div>
 );
 
 export const Features = () => {
@@ -119,7 +169,7 @@ export const Features = () => {
                      <h2 className="text-white text-2xl font-semibold ">Dirección Legal</h2>
                      <p className="text-white/60 text-base">Expertos en derecho tecnológico garantizando transparencia.</p>
                  </div>
-                 <div className="absolute bottom-0 left-[-17px] w-[393px] h-[330px]">
+                 <div className="absolute bottom-[-120px] left-[-17px] w-[393px] h-[330px]">
                      <img src={imgLegal} alt="" className="w-full h-full object-contain" />
                  </div>
             </motion.div>
@@ -127,22 +177,15 @@ export const Features = () => {
         </div>
 
         {/* Footer List */}
-        <div className="flex flex-col gap-0 border-t border-[#404040]">
-            {/* Item 1 */}
-            <div className="flex flex-col md:flex-row gap-6 py-8 border-b border-[#404040] items-center">
-                <p className="flex-1 text-white text-xl md:text-2xl">En el desarrollo de la aplicación mobile</p>
-                <img src={imgZarapps} alt="Zarapps" className="h-[60px] w-auto object-contain" />
-            </div>
-             {/* Item 2 */}
-            <div className="flex flex-col md:flex-row gap-6 py-8 border-b border-[#404040] items-center">
-                <p className="flex-1 text-white text-xl md:text-2xl">Entidad creadora</p>
-                <img src={imgSerbo} alt="Serbo Network" className="h-[64px] w-auto object-contain" />
-            </div>
-             {/* Item 3 */}
-            <div className="flex flex-col md:flex-row gap-6 py-8 border-b border-[#404040] items-center">
-                <p className="flex-1 text-white text-xl md:text-2xl">Infraestructura Web3</p>
-                <MetlabsLogo />
-            </div>
+        <div className="flex flex-col border-t border-[#404040]">
+            {allianceItems.map((item) => (
+              <AllianceItem
+                key={item.id}
+                description={item.description}
+                logo={item.logo}
+                url={item.url}
+              />
+            ))}
         </div>
 
       </div>

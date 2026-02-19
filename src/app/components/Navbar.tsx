@@ -1,13 +1,18 @@
 import image_cf422f683fcd4a8eed14062d8cc2c68ff0331705 from 'figma:asset/cf422f683fcd4a8eed14062d8cc2c68ff0331705.png';
 import React, { useState, useEffect } from 'react';
-import { Menu, X, Twitter, Send, Disc, Wallet } from 'lucide-react';
+import { Menu, X, Twitter, Send, Disc, Wallet, LogIn, UserPlus, Loader2 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
+import { useNavigate } from 'react-router';
+import { useAuth } from './auth/AuthContext';
 import logo from 'figma:asset/beaf3bcfd3b85b6602316924aae2e5fe82f1f4f6.png';
 import desktopLogo from 'figma:asset/8278eb9c42f8c88719415100742286a90a8b0b63.png';
 
 export const Navbar = ({ onConnect, isConnected }: { onConnect?: () => void, isConnected?: boolean }) => {
   const [isOpen, setIsOpen] = useState(false);
   const [scrolled, setScrolled] = useState(false);
+  const [walletLoading, setWalletLoading] = useState(false);
+  const { user, signInWithWallet } = useAuth();
+  const navigate = useNavigate();
 
   // Handle scroll effect for glassmorphism
   useEffect(() => {
@@ -26,6 +31,25 @@ export const Navbar = ({ onConnect, isConnected }: { onConnect?: () => void, isC
     { name: 'Whitepaper', href: '#' },
   ];
 
+  const handleWalletLogin = async () => {
+    setWalletLoading(true);
+    try {
+      const result = await signInWithWallet();
+      if (result.success) {
+        navigate('/dashboard');
+      } else if (result.code === 'USER_NOT_FOUND') {
+        // Wallet not registered yet — redirect to register page
+        navigate('/register');
+      } else if (result.code === 'NO_WALLET') {
+        // No wallet extension — redirect to register (email option)
+        navigate('/register');
+      }
+      // Other errors are handled by AuthContext (sets error state)
+    } finally {
+      setWalletLoading(false);
+    }
+  };
+
   return (
     <nav 
       className={`fixed top-0 left-0 right-0 z-50 transition-all duration-300 ${
@@ -38,7 +62,7 @@ export const Navbar = ({ onConnect, isConnected }: { onConnect?: () => void, isC
         <div className="flex items-center justify-between">
           
           {/* Logo Section */}
-          <div className="flex items-center gap-3 group cursor-pointer">
+          <div className="flex items-center gap-3 group cursor-pointer" onClick={() => navigate('/')}>
             {/* Desktop Logo */}
             <img 
               src={image_cf422f683fcd4a8eed14062d8cc2c68ff0331705} 
@@ -76,15 +100,36 @@ export const Navbar = ({ onConnect, isConnected }: { onConnect?: () => void, isC
           </div>
 
           {/* Right Side - CTA */}
-          <div className="hidden md:flex items-center gap-4">
-            <button 
-              onClick={onConnect}
-              className="flex items-center gap-2 rounded-[14px] bg-[#00ffe6] px-6 h-[42px] text-sm font-bold text-black transition-all hover:shadow-[0_0_20px_rgba(1,255,231,0.4)] relative overflow-hidden group border-[0.667px] border-[rgba(1,255,230,0.5)]"
-            >
-              <div className="absolute inset-0 bg-white/20 translate-y-full group-hover:translate-y-0 transition-transform duration-300" />
-              <Wallet size={16} className="relative z-10" />
-              <span className="relative z-10">{isConnected ? 'Mi Panel' : 'Conectar Wallet'}</span>
-            </button>
+          <div className="hidden md:flex items-center gap-3">
+            {user ? (
+              <button 
+                onClick={() => navigate('/dashboard')}
+                className="flex items-center gap-2 rounded-[14px] bg-[#00ffe6] px-6 h-[42px] text-sm font-bold text-black transition-all hover:shadow-[0_0_20px_rgba(1,255,231,0.4)] relative overflow-hidden group border-[0.667px] border-[rgba(1,255,230,0.5)]"
+              >
+                <div className="absolute inset-0 bg-white/20 translate-y-full group-hover:translate-y-0 transition-transform duration-300" />
+                <Wallet size={16} className="relative z-10" />
+                <span className="relative z-10">Mi Panel</span>
+              </button>
+            ) : (
+              <>
+                <button 
+                  onClick={() => navigate('/login')}
+                  className="flex items-center gap-2 rounded-[14px] bg-white/5 border border-white/10 px-5 h-[42px] text-sm font-medium text-white transition-all hover:bg-white/10"
+                >
+                  <LogIn size={15} />
+                  <span>Entrar</span>
+                </button>
+                <button 
+                  onClick={handleWalletLogin}
+                  disabled={walletLoading}
+                  className="flex items-center gap-2 rounded-[14px] bg-[#00ffe6] px-6 h-[42px] text-sm font-bold text-black transition-all hover:shadow-[0_0_20px_rgba(1,255,231,0.4)] relative overflow-hidden group border-[0.667px] border-[rgba(1,255,230,0.5)] disabled:opacity-60"
+                >
+                  <div className="absolute inset-0 bg-white/20 translate-y-full group-hover:translate-y-0 transition-transform duration-300" />
+                  {walletLoading ? <Loader2 size={16} className="relative z-10 animate-spin" /> : <Wallet size={16} className="relative z-10" />}
+                  <span className="relative z-10">{walletLoading ? 'Conectando...' : 'Conectar Wallet'}</span>
+                </button>
+              </>
+            )}
           </div>
 
           {/* Mobile Menu Button */}
@@ -127,15 +172,33 @@ export const Navbar = ({ onConnect, isConnected }: { onConnect?: () => void, isC
               </div>
               
               <button 
-                onClick={() => {
+                onClick={async () => {
                   setIsOpen(false);
-                  onConnect?.();
+                  if (user) {
+                    navigate('/dashboard');
+                  } else {
+                    await handleWalletLogin();
+                  }
                 }}
-                className="w-full flex items-center justify-center gap-2 rounded-xl bg-[#00ffe6] py-3 font-bold text-black shadow-lg shadow-[#00ffe6]/20"
+                disabled={walletLoading}
+                className="w-full flex items-center justify-center gap-2 rounded-xl bg-[#00ffe6] py-3 font-bold text-black shadow-lg shadow-[#00ffe6]/20 disabled:opacity-60"
               >
-                <Wallet size={20} />
-                {isConnected ? 'Mi Panel' : 'Conectar Wallet'}
+                {walletLoading ? <Loader2 size={20} className="animate-spin" /> : <Wallet size={20} />}
+                {user ? 'Mi Panel' : walletLoading ? 'Conectando...' : 'Conectar Wallet'}
               </button>
+
+              {!user && (
+                <button 
+                  onClick={() => {
+                    setIsOpen(false);
+                    navigate('/login');
+                  }}
+                  className="w-full flex items-center justify-center gap-2 rounded-xl bg-white/5 border border-white/10 py-3 font-medium text-white"
+                >
+                  <LogIn size={18} />
+                  Iniciar Sesion
+                </button>
+              )}
             </div>
           </motion.div>
         )}

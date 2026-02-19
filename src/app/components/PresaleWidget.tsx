@@ -373,7 +373,10 @@ export const PresaleWidget = ({
             </span>
           </button>
 
-          <button className="bg-[rgba(255,255,255,0.1)] h-[68px] rounded-[20px] w-full group hover:bg-[rgba(255,255,255,0.15)] transition-colors relative flex items-center justify-center gap-2">
+          <button
+            onClick={onConnect}
+            className="bg-[rgba(255,255,255,0.1)] h-[68px] rounded-[20px] w-full group hover:bg-[rgba(255,255,255,0.15)] transition-colors relative flex items-center justify-center gap-2"
+          >
             <div className="absolute inset-0 border border-white/10 rounded-[20px]" />
             <svg
               className="size-[24px]"
