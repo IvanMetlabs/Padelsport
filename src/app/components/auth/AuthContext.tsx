@@ -1,43 +1,37 @@
-import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
-import { createClient, type Session, type User, type SupabaseClient } from '@supabase/supabase-js';
-import { projectId, publicAnonKey } from '/utils/supabase/info';
+import React, { createContext, useContext, useState, useEffect, useCallback, useRef } from 'react';
+import {
+  useWeb3Auth,
+  useWeb3AuthConnect,
+  useWeb3AuthDisconnect,
+  useIdentityToken,
+} from '@web3auth/modal/react';
+import { BrowserProvider } from 'ethers';
+import { supabaseUrl, edgeFunctionName } from '../../../../utils/supabase/info';
 
-const SUPABASE_URL = `https://${projectId}.supabase.co`;
-const SERVER_URL = `${SUPABASE_URL}/functions/v1/make-server-a024ec43`;
-
-// Singleton Supabase client
-let supabaseInstance: SupabaseClient | null = null;
-const getSupabase = () => {
-  if (!supabaseInstance) {
-    supabaseInstance = createClient(SUPABASE_URL, publicAnonKey);
-  }
-  return supabaseInstance;
-};
+const SERVER_URL = `${supabaseUrl}/functions/v1/${edgeFunctionName}`;
 
 export interface UserProfile {
   id: string;
-  email: string;
+  email: string | null;
   walletAddress: string;
-  walletType: 'external' | 'internal';
-  registrationMethod: 'wallet' | 'email';
+  walletType: 'external' | 'internal' | 'web3auth_mpc';
+  registrationMethod: string;
+  displayName: string | null;
   tokenBalance: number;
   createdAt: string;
 }
 
 interface AuthContextType {
-  user: User | null;
-  session: Session | null;
-  profile: UserProfile | null;
+  isConnected: boolean;
   loading: boolean;
   error: string | null;
-  signInWithMagicLink: (email: string) => Promise<{ success: boolean; error?: string }>;
-  signInWithWallet: () => Promise<{ success: boolean; error?: string; code?: string }>;
-  registerWithWallet: (email: string, walletAddress: string) => Promise<{ success: boolean; error?: string }>;
-  registerWithEmail: (email: string) => Promise<{ success: boolean; error?: string; walletAddress?: string }>;
-  signOut: () => Promise<void>;
+  profile: UserProfile | null;
+  walletAddress: string | null;
+  connect: () => Promise<void>;
+  disconnect: () => Promise<void>;
   fetchProfile: () => Promise<void>;
+  getIdToken: () => Promise<string | null>;
   clearError: () => void;
-  supabase: SupabaseClient;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -48,271 +42,196 @@ export const useAuth = () => {
   return ctx;
 };
 
-export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const [user, setUser] = useState<User | null>(null);
-  const [session, setSession] = useState<Session | null>(null);
+const delay = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+export const AuthProviderInner: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+  const { provider, isConnected: web3AuthConnected, isInitialized } = useWeb3Auth();
+  const { connect: web3AuthConnect, loading: connectLoading, error: connectError } = useWeb3AuthConnect();
+  const { disconnect: web3AuthDisconnect } = useWeb3AuthDisconnect();
+  const { getIdentityToken } = useIdentityToken();
+
   const [profile, setProfile] = useState<UserProfile | null>(null);
+  const [walletAddress, setWalletAddress] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  const supabase = getSupabase();
+  const loginProcessedRef = useRef(false);
+  const loginInProgressRef = useRef(false);
 
-  // Fetch user profile from server
+  // Get wallet address from provider (with retries)
+  const resolveWalletAddress = useCallback(async (retries = 3): Promise<string | null> => {
+    if (!provider) return null;
+    for (let i = 0; i < retries; i++) {
+      try {
+        const ethersProvider = new BrowserProvider(provider as any);
+        const signer = await ethersProvider.getSigner();
+        const address = await signer.getAddress();
+        console.log('[Auth] Wallet address resolved:', address);
+        return address;
+      } catch (err) {
+        console.warn(`[Auth] resolveWalletAddress attempt ${i + 1}/${retries} failed:`, err);
+        if (i < retries - 1) await delay(1500);
+      }
+    }
+    return null;
+  }, [provider]);
+
+  // Get idToken for server calls (with retries)
+  const getIdToken = useCallback(async (retries = 3): Promise<string | null> => {
+    for (let i = 0; i < retries; i++) {
+      try {
+        const result = await getIdentityToken();
+        if (result) {
+          console.log('[Auth] Identity token obtained');
+          return result;
+        }
+        console.warn(`[Auth] getIdentityToken attempt ${i + 1}/${retries} returned empty`);
+      } catch (err) {
+        console.warn(`[Auth] getIdentityToken attempt ${i + 1}/${retries} failed:`, err);
+      }
+      if (i < retries - 1) await delay(1500);
+    }
+    return null;
+  }, [getIdentityToken]);
+
+  // Helper: call server with Web3Auth token
+  const serverFetch = useCallback(async (path: string, options: RequestInit = {}) => {
+    const idToken = await getIdToken(1);
+    if (!idToken) throw new Error('No identity token');
+
+    const headers = new Headers(options.headers);
+    headers.set('Authorization', `Bearer ${idToken}`);
+    if (!headers.has('Content-Type') && options.body) {
+      headers.set('Content-Type', 'application/json');
+    }
+
+    return fetch(`${SERVER_URL}${path}`, { ...options, headers });
+  }, [getIdToken]);
+
+  // Fetch profile from server
   const fetchProfile = useCallback(async () => {
     try {
-      const { data: { session: currentSession } } = await supabase.auth.getSession();
-      if (!currentSession?.access_token) return;
+      const res = await serverFetch('/auth/profile');
+      if (res.ok) {
+        setProfile(await res.json());
+      } else {
+        console.warn('[Auth] Failed to fetch profile:', res.status);
+      }
+    } catch (err) {
+      console.error('[Auth] Error fetching profile:', err);
+    }
+  }, [serverFetch]);
 
-      const res = await fetch(`${SERVER_URL}/auth/profile`, {
-        headers: { Authorization: `Bearer ${currentSession.access_token}` },
+  // Post-login: register/login on server
+  const processLogin = useCallback(async () => {
+    if (loginProcessedRef.current || loginInProgressRef.current) return;
+    if (!provider || !web3AuthConnected) return;
+
+    loginInProgressRef.current = true;
+    console.log('[Auth] processLogin started');
+
+    try {
+      // Step 1: Resolve wallet address
+      const address = await resolveWalletAddress();
+      if (!address) {
+        console.error('[Auth] FAILED: could not resolve wallet address');
+        setError('No se pudo obtener la direccion de wallet. Intenta reconectar.');
+        return;
+      }
+      setWalletAddress(address);
+
+      // Step 2: Get identity token
+      const idToken = await getIdToken();
+      if (!idToken) {
+        console.error('[Auth] FAILED: could not get identity token');
+        setError('No se pudo obtener el token de identidad. Intenta reconectar.');
+        return;
+      }
+
+      // Debug: decode JWT to see header + claims
+      try {
+        const [h, p] = idToken.split('.').slice(0, 2).map(part =>
+          JSON.parse(atob(part.replace(/-/g, '+').replace(/_/g, '/')))
+        );
+        console.log('[Auth] JWT header:', h);
+        console.log('[Auth] JWT payload:', { iss: p.iss, sub: p.sub, aud: p.aud, iat: p.iat, exp: p.exp, email: p.email, verifier: p.verifier, typeOfLogin: p.typeOfLogin });
+      } catch {}
+
+      console.log('[Auth] Calling server /auth/web3auth-login');
+
+      // Step 3: Call server — only send walletAddress
+      // Server extracts email, name, walletType from the verified JWT
+      const res = await fetch(`${SERVER_URL}/auth/web3auth-login`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${idToken}`,
+        },
+        body: JSON.stringify({ walletAddress: address }),
       });
 
       if (res.ok) {
         const data = await res.json();
+        console.log('[Auth] Server login SUCCESS:', data);
         setProfile(data);
+        loginProcessedRef.current = true;
       } else {
-        console.log('Failed to fetch profile:', await res.text());
+        const errText = await res.text();
+        console.error('[Auth] Server login FAILED:', res.status, errText);
+        const errData = (() => { try { return JSON.parse(errText); } catch { return { error: errText }; } })();
+        setError(errData.error || 'Error al iniciar sesion');
       }
     } catch (err) {
-      console.log('Error fetching profile:', err);
+      console.error('[Auth] processLogin ERROR:', err);
+      setError('Error al procesar el login');
+    } finally {
+      loginInProgressRef.current = false;
+      setLoading(false);
     }
-  }, [supabase]);
+  }, [provider, web3AuthConnected, resolveWalletAddress, getIdToken]);
 
-  // Initialize auth state
+  // Handle initialization & connection changes
   useEffect(() => {
-    // IMPORTANTE: registrar onAuthStateChange PRIMERO.
-    // El evento INITIAL_SESSION se dispara cuando Supabase termina de
-    // inicializar, incluyendo el procesamiento del token del magic link
-    // en la URL. Solo entonces ponemos loading=false, evitando la race
-    // condition donde getSession() devolvía null antes de que el token
-    // fuera procesado y ProtectedRoute redirigía prematuramente.
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(
-      async (event, newSession) => {
-        console.log('Auth state change:', event);
-        setSession(newSession);
-        setUser(newSession?.user ?? null);
+    if (!isInitialized) return;
 
-        if (event === 'INITIAL_SESSION') {
-          // Supabase ha terminado de procesar la URL (token del magic link
-          // incluido). Ahora es seguro desactivar el loading.
-          setLoading(false);
-          if (newSession?.user) {
-            setTimeout(() => fetchProfile(), 100);
-          }
-        }
+    if (!web3AuthConnected) {
+      setProfile(null);
+      setWalletAddress(null);
+      loginProcessedRef.current = false;
+      loginInProgressRef.current = false;
+      setLoading(false);
+      return;
+    }
 
-        if (event === 'SIGNED_IN' && newSession?.user) {
-          setTimeout(() => fetchProfile(), 500);
-        }
+    if (web3AuthConnected && provider && !loginProcessedRef.current) {
+      processLogin();
+    }
+  }, [isInitialized, web3AuthConnected, provider, processLogin]);
 
-        if (event === 'SIGNED_OUT') {
-          setProfile(null);
-        }
-      }
-    );
-
-    return () => subscription.unsubscribe();
-  }, [supabase, fetchProfile]);
-
-  // Sign in with magic link
-  const signInWithMagicLink = async (email: string) => {
+  const connect = async () => {
     try {
       setError(null);
-      const { error: otpError } = await supabase.auth.signInWithOtp({
-        email,
-        options: {
-          emailRedirectTo: `${window.location.origin}/dashboard`,
-        },
-      });
-
-      if (otpError) {
-        const msg = `Error al enviar magic link: ${otpError.message}`;
-        setError(msg);
-        console.log(msg);
-        return { success: false, error: msg };
-      }
-
-      return { success: true };
-    } catch (err) {
-      const msg = `Error inesperado al enviar magic link: ${err}`;
-      setError(msg);
-      console.log(msg);
-      return { success: false, error: msg };
+      setLoading(true);
+      await web3AuthConnect();
+    } catch (err: any) {
+      setLoading(false);
+      if (err?.message?.includes('User closed')) return;
+      setError('Error al conectar');
+      console.error('[Auth] Connect error:', err);
     }
   };
 
-  // Sign in with wallet (MetaMask → server lookup → instant session)
-  const signInWithWallet = async (): Promise<{ success: boolean; error?: string; code?: string }> => {
+  const disconnect = async () => {
     try {
+      await web3AuthDisconnect();
+      setProfile(null);
+      setWalletAddress(null);
+      loginProcessedRef.current = false;
+      loginInProgressRef.current = false;
       setError(null);
-
-      // Step 1: Check if MetaMask / browser wallet is available
-      const ethereum = (window as any).ethereum;
-      if (!ethereum) {
-        const msg = 'No se detectó una wallet. Instala MetaMask u otra wallet compatible.';
-        setError(msg);
-        return { success: false, error: msg, code: 'NO_WALLET' };
-      }
-
-      // Step 2: Request wallet connection
-      let accounts: string[];
-      try {
-        accounts = await ethereum.request({ method: 'eth_requestAccounts' });
-      } catch (connErr: any) {
-        const msg = connErr?.code === 4001
-          ? 'Conexión rechazada por el usuario.'
-          : `Error al conectar wallet: ${connErr?.message || connErr}`;
-        setError(msg);
-        return { success: false, error: msg, code: 'CONNECTION_REJECTED' };
-      }
-
-      if (!accounts || accounts.length === 0) {
-        const msg = 'No se obtuvo ninguna cuenta de la wallet.';
-        setError(msg);
-        return { success: false, error: msg };
-      }
-
-      const walletAddress = accounts[0];
-
-      // Step 3: Call server to look up user by wallet and get instant login token
-      const res = await fetch(`${SERVER_URL}/auth/login/wallet`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${publicAnonKey}`,
-        },
-        body: JSON.stringify({ walletAddress }),
-      });
-
-      const data = await res.json();
-
-      if (!res.ok) {
-        if (data.code === 'USER_NOT_FOUND') {
-          return { success: false, error: data.error, code: 'USER_NOT_FOUND' };
-        }
-        const msg = data.error || 'Error al iniciar sesión con wallet';
-        setError(msg);
-        return { success: false, error: msg };
-      }
-
-      // Step 4: Use the server-generated token_hash to verify OTP instantly
-      const { error: verifyError } = await supabase.auth.verifyOtp({
-        token_hash: data.token_hash,
-        type: 'magiclink',
-      });
-
-      if (verifyError) {
-        const msg = `Error al verificar sesión: ${verifyError.message}`;
-        setError(msg);
-        console.log(msg);
-        return { success: false, error: msg };
-      }
-
-      // Success! Session is now active, onAuthStateChange will handle the rest
-      console.log(`Wallet login successful for: ${data.email}`);
-      return { success: true };
     } catch (err) {
-      const msg = `Error inesperado al iniciar sesión con wallet: ${err}`;
-      setError(msg);
-      console.log(msg);
-      return { success: false, error: msg };
+      console.error('[Auth] Disconnect error:', err);
     }
-  };
-
-  // Register with wallet + email
-  const registerWithWallet = async (email: string, walletAddress: string) => {
-    try {
-      setError(null);
-
-      // Step 1: Create user on server with wallet metadata
-      const res = await fetch(`${SERVER_URL}/auth/register/wallet`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${publicAnonKey}`,
-        },
-        body: JSON.stringify({ email, walletAddress }),
-      });
-
-      const data = await res.json();
-      if (!res.ok) {
-        const msg = data.error || 'Error al registrar con wallet';
-        setError(msg);
-        return { success: false, error: msg };
-      }
-
-      // Step 2: Send magic link for email confirmation
-      const { error: otpError } = await supabase.auth.signInWithOtp({
-        email,
-        options: {
-          emailRedirectTo: `${window.location.origin}/dashboard`,
-        },
-      });
-
-      if (otpError) {
-        const msg = `Usuario creado pero error al enviar magic link: ${otpError.message}`;
-        setError(msg);
-        return { success: false, error: msg };
-      }
-
-      return { success: true };
-    } catch (err) {
-      const msg = `Error inesperado en registro con wallet: ${err}`;
-      setError(msg);
-      return { success: false, error: msg };
-    }
-  };
-
-  // Register with email only (internal wallet)
-  const registerWithEmail = async (email: string) => {
-    try {
-      setError(null);
-
-      // Step 1: Create user on server with auto-generated wallet
-      const res = await fetch(`${SERVER_URL}/auth/register/email`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${publicAnonKey}`,
-        },
-        body: JSON.stringify({ email }),
-      });
-
-      const data = await res.json();
-      if (!res.ok) {
-        const msg = data.error || 'Error al registrar con email';
-        setError(msg);
-        return { success: false, error: msg };
-      }
-
-      // Step 2: Send magic link
-      const { error: otpError } = await supabase.auth.signInWithOtp({
-        email,
-        options: {
-          emailRedirectTo: `${window.location.origin}/dashboard`,
-        },
-      });
-
-      if (otpError) {
-        const msg = `Usuario creado pero error al enviar magic link: ${otpError.message}`;
-        setError(msg);
-        return { success: false, error: msg };
-      }
-
-      return { success: true, walletAddress: data.walletAddress };
-    } catch (err) {
-      const msg = `Error inesperado en registro con email: ${err}`;
-      setError(msg);
-      return { success: false, error: msg };
-    }
-  };
-
-  // Sign out
-  const signOut = async () => {
-    await supabase.auth.signOut();
-    setUser(null);
-    setSession(null);
-    setProfile(null);
   };
 
   const clearError = () => setError(null);
@@ -320,19 +239,16 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   return (
     <AuthContext.Provider
       value={{
-        user,
-        session,
+        isConnected: web3AuthConnected,
+        loading: loading || connectLoading,
+        error: error || (connectError ? connectError.message : null),
         profile,
-        loading,
-        error,
-        signInWithMagicLink,
-        signInWithWallet,
-        registerWithWallet,
-        registerWithEmail,
-        signOut,
+        walletAddress,
+        connect,
+        disconnect,
         fetchProfile,
+        getIdToken,
         clearError,
-        supabase,
       }}
     >
       {children}

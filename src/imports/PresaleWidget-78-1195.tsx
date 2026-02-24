@@ -6,9 +6,10 @@ import imgHero1 from "figma:asset/cbbb7313b9e0107f0bfc4f9cb43241552f0ba154.png";
 interface PresaleWidgetProps {
   onClose?: () => void;
   onBuy?: (tokenAmount: number) => void;
+  onFiatBuy?: () => void;
 }
 
-export default function PresaleWidget({ onClose, onBuy }: PresaleWidgetProps) {
+export default function PresaleWidget({ onClose, onBuy, onFiatBuy }: PresaleWidgetProps) {
   const [usdtAmount, setUsdtAmount] = useState<string>("5000");
   const [pscAmount, setPscAmount] = useState<number>(0);
   const TOKEN_PRICE = 0.05;
@@ -112,8 +113,8 @@ export default function PresaleWidget({ onClose, onBuy }: PresaleWidgetProps) {
              Comprar con Crypto
          </button>
          
-         <button 
-            onClick={handleBuy}
+         <button
+            onClick={onFiatBuy || handleBuy}
             className="w-full h-14 bg-white/10 hover:bg-white/15 border border-white/10 rounded-xl text-white font-bold text-base flex items-center justify-center gap-2 transition-all active:scale-[0.98]"
          >
              <CreditCard size={18} />

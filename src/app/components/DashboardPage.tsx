@@ -6,7 +6,7 @@ import { Footer } from './Footer';
 import { useAuth } from './auth/AuthContext';
 
 export const DashboardPage = () => {
-  const { user, profile, signOut } = useAuth();
+  const { isConnected, profile, disconnect } = useAuth();
   const navigate = useNavigate();
 
   const handleConnect = () => {
@@ -14,13 +14,13 @@ export const DashboardPage = () => {
   };
 
   const handleDisconnect = async () => {
-    await signOut();
+    await disconnect();
     navigate('/');
   };
 
   return (
     <>
-      <Navbar onConnect={handleConnect} isConnected={!!user} />
+      <Navbar onConnect={handleConnect} isConnected={isConnected} />
       <Dashboard
         balance={profile?.tokenBalance ?? 0}
         onDisconnect={handleDisconnect}

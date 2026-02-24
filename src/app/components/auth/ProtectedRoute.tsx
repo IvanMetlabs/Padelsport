@@ -4,7 +4,7 @@ import { useAuth } from './AuthContext';
 import { Loader2 } from 'lucide-react';
 
 export const ProtectedRoute: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const { user, loading } = useAuth();
+  const { isConnected, loading } = useAuth();
 
   if (loading) {
     return (
@@ -17,7 +17,7 @@ export const ProtectedRoute: React.FC<{ children: React.ReactNode }> = ({ childr
     );
   }
 
-  if (!user) {
+  if (!isConnected) {
     return <Navigate to="/login" replace />;
   }
 

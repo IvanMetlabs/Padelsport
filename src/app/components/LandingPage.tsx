@@ -152,11 +152,11 @@ const TransparencySection = () => {
 };
 
 export const LandingPage = () => {
-  const { user } = useAuth();
+  const { isConnected } = useAuth();
   const navigate = useNavigate();
 
   const handleConnect = () => {
-    if (user) {
+    if (isConnected) {
       navigate('/dashboard');
     } else {
       navigate('/register');
@@ -185,7 +185,7 @@ export const LandingPage = () => {
           animation: scroll 30s linear infinite;
         }
       `}</style>
-      <Navbar onConnect={handleConnect} isConnected={!!user} />
+      <Navbar onConnect={handleConnect} isConnected={isConnected} />
       <Hero onConnect={handleConnect} />
       
       {/* Marquee Section */}
