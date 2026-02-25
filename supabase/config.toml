@@ -1,5 +1,2 @@
-[project]
-id = "tphemonbkgfevwetsdzt"
-
 [functions.server]
 verify_jwt = false

@@ -21,17 +21,32 @@ app.use(
 
 // ---- Helpers ----
 
-/** Extract and verify Web3Auth JWT from Authorization header */
+/** Extract and verify Web3Auth JWT from Authorization header.
+ *  Returns { payload } on success or { error, status } on failure. */
 const verifyAuth = async (
   c: any,
-): Promise<Web3AuthJWTPayload | null> => {
-  const token = c.req.header("Authorization")?.replace("Bearer ", "");
-  if (!token) return null;
+): Promise<
+  | { payload: Web3AuthJWTPayload; error?: never }
+  | { payload?: never; error: string; status: number }
+> => {
+  const authHeader = c.req.header("Authorization");
+  if (!authHeader) {
+    console.log("[verifyAuth] No Authorization header");
+    return { error: "Authorization header missing", status: 401 };
+  }
+
+  const token = authHeader.replace("Bearer ", "");
+  if (!token || token === authHeader) {
+    console.log("[verifyAuth] Malformed Authorization header (no Bearer prefix)");
+    return { error: "Malformed Authorization header", status: 401 };
+  }
+
   try {
-    return await verifyWeb3AuthToken(token);
+    const payload = await verifyWeb3AuthToken(token);
+    return { payload };
   } catch (err) {
-    console.log("Auth verification failed:", err);
-    return null;
+    console.error("[verifyAuth] Token verification failed:", String(err));
+    return { error: `Token verification failed: ${err}`, status: 401 };
   }
 };
 
@@ -92,10 +107,11 @@ app.get("/server/health", (c) => c.json({ status: "ok" }));
 app.post("/server/auth/web3auth-login", async (c) => {
   try {
     // 1. Verify JWT
-    const payload = await verifyAuth(c);
-    if (!payload) {
-      return c.json({ error: "Token invalido o no proporcionado" }, 401);
+    const auth = await verifyAuth(c);
+    if (auth.error) {
+      return c.json({ error: auth.error }, auth.status);
     }
+    const payload = auth.payload;
 
     // 2. Extract data from verified JWT (trustworthy, not from client body)
     const web3authId = payload.resolvedId;
@@ -189,12 +205,12 @@ app.post("/server/auth/web3auth-login", async (c) => {
 // =====================
 app.get("/server/auth/profile", async (c) => {
   try {
-    const payload = await verifyAuth(c);
-    if (!payload) {
-      return c.json({ error: "No autorizado" }, 401);
+    const auth = await verifyAuth(c);
+    if (auth.error) {
+      return c.json({ error: auth.error }, auth.status);
     }
 
-    const profile = await db.getProfileByWeb3AuthId(payload.resolvedId);
+    const profile = await db.getProfileByWeb3AuthId(auth.payload.resolvedId);
     if (!profile) {
       return c.json({ error: "Perfil no encontrado" }, 404);
     }
@@ -211,15 +227,12 @@ app.get("/server/auth/profile", async (c) => {
 // =====================
 app.post("/server/auth/buy-tokens", async (c) => {
   try {
-    const payload = await verifyAuth(c);
-    if (!payload) {
-      return c.json(
-        { error: "No autorizado. Debes conectarte para comprar tokens." },
-        401,
-      );
+    const auth = await verifyAuth(c);
+    if (auth.error) {
+      return c.json({ error: auth.error }, auth.status);
     }
 
-    const profile = await db.getProfileByWeb3AuthId(payload.resolvedId);
+    const profile = await db.getProfileByWeb3AuthId(auth.payload.resolvedId);
     if (!profile) {
       return c.json({ error: "Perfil no encontrado" }, 404);
     }
