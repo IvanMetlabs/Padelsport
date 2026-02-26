@@ -1,8 +1,6 @@
-import { createBrowserRouter } from 'react-router';
+import { createBrowserRouter, Navigate } from 'react-router';
 import React from 'react';
 import { LandingPage } from './components/LandingPage';
-import { LoginPage } from './components/auth/LoginPage';
-import { RegisterPage } from './components/auth/RegisterPage';
 import { DashboardPage } from './components/DashboardPage';
 import { ProtectedRoute } from './components/auth/ProtectedRoute';
 import { StyleGuide } from './components/StyleGuide';
@@ -23,17 +21,7 @@ const LandingRoute = () => (
   </RootLayout>
 );
 
-const LoginRoute = () => (
-  <RootLayout>
-    <LoginPage />
-  </RootLayout>
-);
-
-const RegisterRoute = () => (
-  <RootLayout>
-    <RegisterPage />
-  </RootLayout>
-);
+const RedirectToLanding = () => <Navigate to="/" replace />;
 
 const DashboardRoute = () => (
   <RootLayout>
@@ -73,11 +61,11 @@ export const router = createBrowserRouter([
   },
   {
     path: '/login',
-    Component: LoginRoute,
+    Component: RedirectToLanding,
   },
   {
     path: '/register',
-    Component: RegisterRoute,
+    Component: RedirectToLanding,
   },
   {
     path: '/dashboard',

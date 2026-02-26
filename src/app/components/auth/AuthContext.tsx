@@ -27,7 +27,7 @@ interface AuthContextType {
   error: string | null;
   profile: UserProfile | null;
   walletAddress: string | null;
-  connect: () => Promise<void>;
+  connect: () => Promise<boolean>;
   disconnect: () => Promise<void>;
   fetchProfile: () => Promise<void>;
   getIdToken: () => Promise<string | null>;
@@ -45,7 +45,7 @@ export const useAuth = () => {
 const delay = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 export const AuthProviderInner: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const { provider, isConnected: web3AuthConnected, isInitialized } = useWeb3Auth();
+  const { provider, isConnected: web3AuthConnected, isInitialized, web3Auth } = useWeb3Auth() as any;
   const { connect: web3AuthConnect, loading: connectLoading, error: connectError } = useWeb3AuthConnect();
   const { disconnect: web3AuthDisconnect } = useWeb3AuthDisconnect();
   const { getIdentityToken } = useIdentityToken();
@@ -214,6 +214,8 @@ export const AuthProviderInner: React.FC<{ children: React.ReactNode }> = ({ chi
         setSessionToken(data.sessionToken);
         setProfile(data);
         loginProcessedRef.current = true;
+        // Close Web3Auth modal if still open
+        try { web3Auth?.loginModal?.closeModal(); } catch {}
       } else {
         const errText = await res.text();
         console.error('[Auth] Server login FAILED:', res.status, errText);
@@ -248,16 +250,20 @@ export const AuthProviderInner: React.FC<{ children: React.ReactNode }> = ({ chi
     }
   }, [isInitialized, web3AuthConnected, provider, processLogin]);
 
-  const connect = async () => {
+  const connect = async (): Promise<boolean> => {
     try {
       setError(null);
       setLoading(true);
       await web3AuthConnect();
+      // Close the Web3Auth modal immediately so it doesn't linger empty
+      try { web3Auth?.loginModal?.closeModal(); } catch {}
+      return true;
     } catch (err: any) {
       setLoading(false);
-      if (err?.message?.includes('User closed')) return;
+      if (err?.message?.includes('User closed')) return false;
       setError('Error al conectar');
       console.error('[Auth] Connect error:', err);
+      return false;
     }
   };
 
@@ -280,7 +286,7 @@ export const AuthProviderInner: React.FC<{ children: React.ReactNode }> = ({ chi
   return (
     <AuthContext.Provider
       value={{
-        isConnected: web3AuthConnected,
+        isConnected: web3AuthConnected && profile !== null,
         loading: loading || connectLoading,
         error: error || (connectError ? connectError.message : null),
         profile,

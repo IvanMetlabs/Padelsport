@@ -35,9 +35,10 @@ export const Navbar = ({ onConnect, isConnected: isConnectedProp }: { onConnect?
   const handleConnect = async () => {
     setConnecting(true);
     try {
-      await connect();
-      // If connected, navigate to dashboard
-      navigate('/dashboard');
+      const success = await connect();
+      if (success) {
+        navigate('/dashboard');
+      }
     } finally {
       setConnecting(false);
     }
