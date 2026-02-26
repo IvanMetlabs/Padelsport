@@ -57,6 +57,17 @@ DROP POLICY IF EXISTS "Users can view own profile" ON public.profiles;
 DROP POLICY IF EXISTS "Users can update own profile" ON public.profiles;
 DROP POLICY IF EXISTS "Users can view own transactions" ON public.transactions;
 
--- Re-create permissive policies for service_role access (Edge Functions handle auth)
--- All client access goes through Edge Functions which use service_role key (bypasses RLS)
--- These policies are kept minimal since direct client access is not used.
+-- ⚠️  RLS STRATEGY: INTENTIONAL DENY-ALL FOR CLIENT ROLES
+--
+-- RLS remains ENABLED on profiles and transactions with ZERO policies.
+-- In Postgres this means:
+--   • anon / authenticated roles → DENIED (cannot read, write, or modify)
+--   • service_role              → BYPASSES RLS (used by Edge Functions)
+--
+-- ALL data access goes through Supabase Edge Functions which:
+--   1. Verify Web3Auth JWTs (not Supabase Auth JWTs)
+--   2. Use service_role key to query the DB
+--
+-- DO NOT add permissive policies here unless you also add proper
+-- row-level filtering. An unscoped policy (e.g., USING (true)) would
+-- expose the entire table to anyone with the anon key.

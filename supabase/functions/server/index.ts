@@ -3,15 +3,22 @@ import { cors } from "npm:hono/cors";
 import { logger } from "npm:hono/logger";
 import * as db from "./db.ts";
 import { verifyWeb3AuthToken, type Web3AuthJWTPayload } from "./web3auth.ts";
+import { signSessionToken, verifySessionToken, type SessionPayload } from "./session.ts";
 
 const app = new Hono();
 
 app.use("*", logger(console.log));
 
+const ALLOWED_ORIGINS = [
+  "http://localhost:5173",
+  // Add production domain here when deploying, e.g.:
+  // "https://padelsport.com",
+];
+
 app.use(
   "/*",
   cors({
-    origin: "*",
+    origin: ALLOWED_ORIGINS,
     allowHeaders: ["Content-Type", "Authorization"],
     allowMethods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
     exposeHeaders: ["Content-Length"],
@@ -47,6 +54,33 @@ const verifyAuth = async (
   } catch (err) {
     console.error("[verifyAuth] Token verification failed:", String(err));
     return { error: `Token verification failed: ${err}`, status: 401 };
+  }
+};
+
+/** Extract and verify session token from Authorization header.
+ *  Used by all protected endpoints (profile, buy-tokens, etc.). */
+const verifySession = async (
+  c: any,
+): Promise<
+  | { session: SessionPayload; error?: never }
+  | { session?: never; error: string; status: number }
+> => {
+  const authHeader = c.req.header("Authorization");
+  if (!authHeader) {
+    return { error: "Authorization header missing", status: 401 };
+  }
+
+  const token = authHeader.replace("Bearer ", "");
+  if (!token || token === authHeader) {
+    return { error: "Malformed Authorization header", status: 401 };
+  }
+
+  try {
+    const session = await verifySessionToken(token);
+    return { session };
+  } catch (err) {
+    console.error("[verifySession] Session token invalid:", String(err));
+    return { error: "Session expired or invalid", status: 401 };
   }
 };
 
@@ -120,9 +154,26 @@ app.post("/server/auth/web3auth-login", async (c) => {
     const walletType = resolveWalletType(payload);
     const registrationMethod = resolveRegistrationMethod(payload, walletType);
 
-    // 3. Get wallet address from body (only thing we need from client)
-    const { walletAddress } = await c.req.json();
-    if (!walletAddress) {
+    // 3. Resolve wallet address — prefer JWT (verified), fallback to body
+    const jwtWallet = payload.resolvedWalletAddress;
+    const { walletAddress: bodyWallet } = await c.req.json();
+
+    let walletAddress: string;
+    if (jwtWallet) {
+      walletAddress = jwtWallet;
+      if (bodyWallet && bodyWallet.toLowerCase() !== jwtWallet) {
+        console.warn(
+          `[web3auth-login] Wallet mismatch — jwt=${jwtWallet}, body=${bodyWallet}`,
+        );
+        return c.json({ error: "Wallet address does not match token" }, 403);
+      }
+    } else if (bodyWallet) {
+      // JWT had no wallet info (ed25519 curve or missing claim) — accept body with warning
+      console.warn(
+        "[web3auth-login] Using unverified wallet from body (JWT has no derivable wallet)",
+      );
+      walletAddress = bodyWallet;
+    } else {
       return c.json({ error: "walletAddress is required" }, 400);
     }
 
@@ -146,7 +197,12 @@ app.post("/server/auth/web3auth-login", async (c) => {
         );
       }
       console.log(`  -> existing by web3auth_id`);
-      return c.json(formatProfileResponse(profile));
+      const sessionToken = await signSessionToken({
+        profileId: profile.id,
+        web3authId,
+        walletAddress: profile.wallet_address,
+      });
+      return c.json({ ...formatProfileResponse(profile), sessionToken });
     }
 
     // 4b. Try by wallet_address (existing external wallet user)
@@ -160,7 +216,12 @@ app.post("/server/auth/web3auth-login", async (c) => {
         displayName,
       );
       console.log(`  -> migrated by wallet`);
-      return c.json(formatProfileResponse(profile));
+      const sessionToken = await signSessionToken({
+        profileId: profile.id,
+        web3authId,
+        walletAddress: profile.wallet_address,
+      });
+      return c.json({ ...formatProfileResponse(profile), sessionToken });
     }
 
     // 4c. Try by email (migrating old email user)
@@ -175,7 +236,12 @@ app.post("/server/auth/web3auth-login", async (c) => {
           displayName,
         );
         console.log(`  -> migrated by email`);
-        return c.json(formatProfileResponse(profile));
+        const sessionToken = await signSessionToken({
+          profileId: profile.id,
+          web3authId,
+          walletAddress: profile.wallet_address,
+        });
+        return c.json({ ...formatProfileResponse(profile), sessionToken });
       }
     }
 
@@ -190,7 +256,12 @@ app.post("/server/auth/web3auth-login", async (c) => {
     });
 
     console.log(`  -> NEW profile created`);
-    return c.json(formatProfileResponse(profile));
+    const sessionToken = await signSessionToken({
+      profileId: profile.id,
+      web3authId,
+      walletAddress: profile.wallet_address,
+    });
+    return c.json({ ...formatProfileResponse(profile), sessionToken });
   } catch (err) {
     console.log(`Unexpected error during web3auth-login: ${err}`);
     return c.json(
@@ -205,12 +276,12 @@ app.post("/server/auth/web3auth-login", async (c) => {
 // =====================
 app.get("/server/auth/profile", async (c) => {
   try {
-    const auth = await verifyAuth(c);
+    const auth = await verifySession(c);
     if (auth.error) {
       return c.json({ error: auth.error }, auth.status);
     }
 
-    const profile = await db.getProfileByWeb3AuthId(auth.payload.resolvedId);
+    const profile = await db.getProfileByWeb3AuthId(auth.session.web3authId);
     if (!profile) {
       return c.json({ error: "Perfil no encontrado" }, 404);
     }
@@ -227,12 +298,12 @@ app.get("/server/auth/profile", async (c) => {
 // =====================
 app.post("/server/auth/buy-tokens", async (c) => {
   try {
-    const auth = await verifyAuth(c);
+    const auth = await verifySession(c);
     if (auth.error) {
       return c.json({ error: auth.error }, auth.status);
     }
 
-    const profile = await db.getProfileByWeb3AuthId(auth.payload.resolvedId);
+    const profile = await db.getProfileByWeb3AuthId(auth.session.web3authId);
     if (!profile) {
       return c.json({ error: "Perfil no encontrado" }, 404);
     }

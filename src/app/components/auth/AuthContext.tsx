@@ -52,6 +52,7 @@ export const AuthProviderInner: React.FC<{ children: React.ReactNode }> = ({ chi
 
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [walletAddress, setWalletAddress] = useState<string | null>(null);
+  const [sessionToken, setSessionToken] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -94,19 +95,56 @@ export const AuthProviderInner: React.FC<{ children: React.ReactNode }> = ({ chi
     return null;
   }, [getIdentityToken]);
 
-  // Helper: call server with Web3Auth token
-  const serverFetch = useCallback(async (path: string, options: RequestInit = {}) => {
+  // Helper: perform login to get a fresh session token
+  const renewSession = useCallback(async (): Promise<string | null> => {
+    const address = await resolveWalletAddress(1);
     const idToken = await getIdToken(1);
-    if (!idToken) throw new Error('No identity token');
+    if (!address || !idToken) return null;
 
-    const headers = new Headers(options.headers);
-    headers.set('Authorization', `Bearer ${idToken}`);
-    if (!headers.has('Content-Type') && options.body) {
-      headers.set('Content-Type', 'application/json');
+    const res = await fetch(`${SERVER_URL}/auth/web3auth-login`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${idToken}`,
+      },
+      body: JSON.stringify({ walletAddress: address }),
+    });
+
+    if (res.ok) {
+      const data = await res.json();
+      setSessionToken(data.sessionToken);
+      setProfile(data);
+      return data.sessionToken;
+    }
+    return null;
+  }, [resolveWalletAddress, getIdToken]);
+
+  // Helper: call server with session token, auto-refresh on 401
+  const serverFetch = useCallback(async (path: string, options: RequestInit = {}) => {
+    if (!sessionToken) throw new Error('No session token');
+
+    const doFetch = (token: string) => {
+      const headers = new Headers(options.headers);
+      headers.set('Authorization', `Bearer ${token}`);
+      if (!headers.has('Content-Type') && options.body) {
+        headers.set('Content-Type', 'application/json');
+      }
+      return fetch(`${SERVER_URL}${path}`, { ...options, headers });
+    };
+
+    const res = await doFetch(sessionToken);
+
+    // Auto-refresh: if session expired, renew and retry once
+    if (res.status === 401) {
+      console.log('[Auth] Session expired, renewing...');
+      const newToken = await renewSession();
+      if (newToken) {
+        return doFetch(newToken);
+      }
     }
 
-    return fetch(`${SERVER_URL}${path}`, { ...options, headers });
-  }, [getIdToken]);
+    return res;
+  }, [sessionToken, renewSession]);
 
   // Fetch profile from server
   const fetchProfile = useCallback(async () => {
@@ -173,6 +211,7 @@ export const AuthProviderInner: React.FC<{ children: React.ReactNode }> = ({ chi
       if (res.ok) {
         const data = await res.json();
         console.log('[Auth] Server login SUCCESS:', data);
+        setSessionToken(data.sessionToken);
         setProfile(data);
         loginProcessedRef.current = true;
       } else {
@@ -197,6 +236,7 @@ export const AuthProviderInner: React.FC<{ children: React.ReactNode }> = ({ chi
     if (!web3AuthConnected) {
       setProfile(null);
       setWalletAddress(null);
+      setSessionToken(null);
       loginProcessedRef.current = false;
       loginInProgressRef.current = false;
       setLoading(false);
@@ -226,6 +266,7 @@ export const AuthProviderInner: React.FC<{ children: React.ReactNode }> = ({ chi
       await web3AuthDisconnect();
       setProfile(null);
       setWalletAddress(null);
+      setSessionToken(null);
       loginProcessedRef.current = false;
       loginInProgressRef.current = false;
       setError(null);

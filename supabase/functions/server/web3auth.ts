@@ -1,4 +1,5 @@
 import * as jose from "npm:jose@5";
+import { computeAddress } from "npm:ethers@6";
 
 const WEB3AUTH_JWKS_URL = "https://api-auth.web3auth.io/jwks";
 
@@ -18,12 +19,15 @@ export interface Web3AuthJWTPayload {
   verifier?: string;
   typeOfLogin?: string;
   wallets?: Array<{
-    address: string;
+    address?: string;
     type: string;
     public_key?: string;
+    curve?: string;
   }>;
   /** Stable identifier derived from sub (social) or wallet address (external) */
   resolvedId: string;
+  /** Wallet address extracted/derived from JWT. null if JWT has no wallet info. */
+  resolvedWalletAddress: string | null;
   [key: string]: unknown;
 }
 
@@ -105,5 +109,27 @@ export async function verifyWeb3AuthToken(
   }
   console.log(`[web3auth] resolvedId=${resolvedId} (from: ${payload.sub ? "sub" : wallets?.[0] ? "wallets" : p.verifierId ? "verifierId" : p.email ? "email" : "aud"})`);
 
-  return { ...payload, resolvedId } as unknown as Web3AuthJWTPayload;
+  // Resolve wallet address from JWT claims
+  let resolvedWalletAddress: string | null = null;
+  const wallet = wallets?.[0];
+  if (wallet?.address) {
+    // External wallet — address is directly in JWT
+    resolvedWalletAddress = wallet.address.toLowerCase();
+    console.log(`[web3auth] resolvedWalletAddress=${resolvedWalletAddress} (from: wallets[0].address)`);
+  } else if (wallet?.public_key && (!wallet.curve || wallet.curve === "secp256k1")) {
+    // Social login with secp256k1 — derive EVM address from compressed public key
+    try {
+      const pubKeyHex = wallet.public_key.startsWith("0x")
+        ? wallet.public_key
+        : `0x${wallet.public_key}`;
+      resolvedWalletAddress = computeAddress(pubKeyHex).toLowerCase();
+      console.log(`[web3auth] resolvedWalletAddress=${resolvedWalletAddress} (derived from public_key)`);
+    } catch (err) {
+      console.warn("[web3auth] Could not derive address from public_key:", err);
+    }
+  } else {
+    console.warn("[web3auth] JWT has no wallet address or derivable public_key");
+  }
+
+  return { ...payload, resolvedId, resolvedWalletAddress } as unknown as Web3AuthJWTPayload;
 }
