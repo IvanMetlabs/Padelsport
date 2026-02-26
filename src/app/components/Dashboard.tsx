@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { GlassCard } from './ui/GlassCard';
-import { Wallet, LogOut, CreditCard, CheckCircle } from 'lucide-react';
+import { Wallet, CreditCard, CheckCircle } from 'lucide-react';
 import { useAuth } from './auth/AuthContext';
 import { useCheckout } from '@web3auth/modal/react';
 import { supabaseUrl, edgeFunctionName } from '../../../utils/supabase/info';
@@ -14,10 +14,9 @@ const SERVER_URL = `${supabaseUrl}/functions/v1/${edgeFunctionName}`;
 
 interface DashboardProps {
   balance: number;
-  onDisconnect: () => void;
 }
 
-export const Dashboard = ({ balance: initialBalance = 0, onDisconnect }: DashboardProps) => {
+export const Dashboard = ({ balance: initialBalance = 0 }: DashboardProps) => {
   const { profile, fetchProfile, getIdToken } = useAuth();
   const { showCheckout } = useCheckout();
   const [balance, setBalance] = useState(initialBalance);
@@ -54,17 +53,6 @@ export const Dashboard = ({ balance: initialBalance = 0, onDisconnect }: Dashboa
   };
 
   const progress = getProgress();
-
-  // Wallet type display label
-  const walletTypeLabel = () => {
-    if (!profile) return '';
-    switch (profile.walletType) {
-      case 'external': return 'Wallet externa';
-      case 'web3auth_mpc': return 'Wallet embebida';
-      case 'internal': return 'Wallet interna';
-      default: return profile.walletType;
-    }
-  };
 
   const handleBuy = async (amount: number) => {
     try {
@@ -109,31 +97,6 @@ export const Dashboard = ({ balance: initialBalance = 0, onDisconnect }: Dashboa
   return (
     <div className="min-h-screen bg-black pt-24 pb-12 px-4 md:px-6 flex flex-col items-center">
       <div className="max-w-4xl w-full space-y-8">
-        {/* Header */}
-        <div className="flex justify-between items-center">
-          <div>
-            <h1 className="text-3xl font-bold text-white">Mi Panel</h1>
-            {profile?.walletAddress && (
-              <div className="flex items-center gap-2 mt-1">
-                <div className={`w-2 h-2 rounded-full ${profile.walletType === 'external' ? 'bg-[#00ffe6]' : 'bg-purple-400'}`} />
-                <span className="text-[#99a1af] text-xs font-mono">
-                  {profile.walletAddress.slice(0, 6)}...{profile.walletAddress.slice(-4)}
-                </span>
-                <span className="text-[#99a1af]/50 text-[10px] uppercase">
-                  ({walletTypeLabel()})
-                </span>
-              </div>
-            )}
-          </div>
-          <button
-            onClick={onDisconnect}
-            className="flex items-center gap-2 text-sm text-[#99a1af] hover:text-white transition-colors"
-          >
-            <LogOut size={16} />
-            Desconectar
-          </button>
-        </div>
-
         {/* Main Card */}
         <div className="bg-black rounded-[30px] p-[30px] md:p-[50px] flex flex-col items-center gap-[30px] md:gap-[48px] w-full border border-white/5 shadow-2xl relative">
             {/* Level Icons Row */}

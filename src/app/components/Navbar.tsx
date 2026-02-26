@@ -1,17 +1,21 @@
 import image_cf422f683fcd4a8eed14062d8cc2c68ff0331705 from 'figma:asset/cf422f683fcd4a8eed14062d8cc2c68ff0331705.png';
-import React, { useState, useEffect } from 'react';
-import { Menu, X, Twitter, Send, Disc, Wallet, Loader2 } from 'lucide-react';
+import React, { useState, useEffect, useRef } from 'react';
+import { Menu, X, Twitter, Send, Disc, Wallet, Loader2, LogOut, ChevronDown } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
-import { useNavigate } from 'react-router';
+import { useNavigate, useLocation } from 'react-router';
 import { useAuth } from './auth/AuthContext';
 import logo from 'figma:asset/beaf3bcfd3b85b6602316924aae2e5fe82f1f4f6.png';
 
-export const Navbar = ({ onConnect, isConnected: isConnectedProp }: { onConnect?: () => void, isConnected?: boolean }) => {
+export const Navbar = ({ onConnect, onDisconnect, isConnected: isConnectedProp }: { onConnect?: () => void, onDisconnect?: () => void, isConnected?: boolean }) => {
   const [isOpen, setIsOpen] = useState(false);
   const [scrolled, setScrolled] = useState(false);
   const [connecting, setConnecting] = useState(false);
-  const { isConnected, connect, loading } = useAuth();
+  const [walletMenuOpen, setWalletMenuOpen] = useState(false);
+  const walletMenuRef = useRef<HTMLDivElement>(null);
+  const { isConnected, connect, disconnect, profile, loading } = useAuth();
   const navigate = useNavigate();
+  const location = useLocation();
+  const isDashboard = location.pathname === '/dashboard';
 
   const connected = isConnectedProp ?? isConnected;
 
@@ -23,6 +27,31 @@ export const Navbar = ({ onConnect, isConnected: isConnectedProp }: { onConnect?
     window.addEventListener('scroll', handleScroll);
     return () => window.removeEventListener('scroll', handleScroll);
   }, []);
+
+  // Close wallet dropdown on outside click
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      if (walletMenuRef.current && !walletMenuRef.current.contains(e.target as Node)) {
+        setWalletMenuOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
+  const truncatedAddress = profile?.walletAddress
+    ? `${profile.walletAddress.slice(0, 6)}...${profile.walletAddress.slice(-4)}`
+    : '';
+
+  const handleDisconnect = async () => {
+    setWalletMenuOpen(false);
+    if (onDisconnect) {
+      onDisconnect();
+    } else {
+      await disconnect();
+      navigate('/');
+    }
+  };
 
   const links = [
     { name: 'Inicio', href: '#' },
@@ -79,33 +108,56 @@ export const Navbar = ({ onConnect, isConnected: isConnectedProp }: { onConnect?
             </div>
           </div>
 
-          {/* Desktop Links */}
-          <div className="hidden lg:flex items-center gap-8 bg-[rgba(255,255,255,0.05)] px-8 py-2.5 rounded-full border border-white/5 backdrop-blur-sm">
-            <a href="#vision" className="text-[14px] text-[#d1d5dc] transition-all hover:text-white relative group">
-                Vision
-                <span className="absolute -bottom-1 left-0 w-0 h-[2px] bg-[#00ffe6] transition-all duration-300 group-hover:w-full" />
-            </a>
-            <a href="#tokenomics" className="text-[14px] text-[#d1d5dc] transition-all hover:text-white relative group">
-                Tokenomics
-                <span className="absolute -bottom-1 left-0 w-0 h-[2px] bg-[#00ffe6] transition-all duration-300 group-hover:w-full" />
-            </a>
-            <a href="#roadmap" className="text-[14px] text-[#d1d5dc] transition-all hover:text-white relative group">
-                Roadmap
-                <span className="absolute -bottom-1 left-0 w-0 h-[2px] bg-[#00ffe6] transition-all duration-300 group-hover:w-full" />
-            </a>
-          </div>
+          {/* Desktop Links - only on landing page */}
+          {!isDashboard && (
+            <div className="hidden lg:flex items-center gap-8 bg-[rgba(255,255,255,0.05)] px-8 py-2.5 rounded-full border border-white/5 backdrop-blur-sm">
+              <a href="#vision" className="text-[14px] text-[#d1d5dc] transition-all hover:text-white relative group">
+                  Vision
+                  <span className="absolute -bottom-1 left-0 w-0 h-[2px] bg-[#00ffe6] transition-all duration-300 group-hover:w-full" />
+              </a>
+              <a href="#tokenomics" className="text-[14px] text-[#d1d5dc] transition-all hover:text-white relative group">
+                  Tokenomics
+                  <span className="absolute -bottom-1 left-0 w-0 h-[2px] bg-[#00ffe6] transition-all duration-300 group-hover:w-full" />
+              </a>
+              <a href="#roadmap" className="text-[14px] text-[#d1d5dc] transition-all hover:text-white relative group">
+                  Roadmap
+                  <span className="absolute -bottom-1 left-0 w-0 h-[2px] bg-[#00ffe6] transition-all duration-300 group-hover:w-full" />
+              </a>
+            </div>
+          )}
 
           {/* Right Side - CTA */}
           <div className="hidden md:flex items-center gap-3">
             {connected ? (
-              <button
-                onClick={() => navigate('/dashboard')}
-                className="flex items-center gap-2 rounded-[14px] bg-[#00ffe6] px-6 h-[42px] text-sm font-bold text-black transition-all hover:shadow-[0_0_20px_rgba(1,255,231,0.4)] relative overflow-hidden group border-[0.667px] border-[rgba(1,255,230,0.5)]"
-              >
-                <div className="absolute inset-0 bg-white/20 translate-y-full group-hover:translate-y-0 transition-transform duration-300" />
-                <Wallet size={16} className="relative z-10" />
-                <span className="relative z-10">Mi Panel</span>
-              </button>
+              <div className="relative" ref={walletMenuRef}>
+                <button
+                  onClick={() => setWalletMenuOpen(!walletMenuOpen)}
+                  className="flex items-center gap-2 rounded-[14px] bg-white/5 border border-white/10 px-4 h-[42px] text-sm text-white transition-all hover:bg-white/10 hover:border-white/20"
+                >
+                  <div className={`w-2 h-2 rounded-full ${profile?.walletType === 'external' ? 'bg-[#00ffe6]' : 'bg-purple-400'}`} />
+                  <span className="font-mono text-xs">{truncatedAddress}</span>
+                  <ChevronDown size={14} className={`text-[#99a1af] transition-transform duration-200 ${walletMenuOpen ? 'rotate-180' : ''}`} />
+                </button>
+                <AnimatePresence>
+                  {walletMenuOpen && (
+                    <motion.div
+                      initial={{ opacity: 0, y: 4, scale: 0.95 }}
+                      animate={{ opacity: 1, y: 0, scale: 1 }}
+                      exit={{ opacity: 0, y: 4, scale: 0.95 }}
+                      transition={{ duration: 0.15 }}
+                      className="absolute right-0 mt-2 w-48 bg-[#0a0a0a] border border-white/10 rounded-xl overflow-hidden shadow-xl shadow-black/50"
+                    >
+                      <button
+                        onClick={handleDisconnect}
+                        className="w-full flex items-center gap-3 px-4 py-3 text-sm text-[#99a1af] hover:text-white hover:bg-white/5 transition-colors cursor-pointer"
+                      >
+                        <LogOut size={15} />
+                        Desconectar
+                      </button>
+                    </motion.div>
+                  )}
+                </AnimatePresence>
+              </div>
             ) : (
               <button
                 onClick={handleConnect}
@@ -158,21 +210,36 @@ export const Navbar = ({ onConnect, isConnected: isConnectedProp }: { onConnect?
                  <a href="#" className="text-gray-400 hover:text-white"><Disc size={24} /></a>
               </div>
 
-              <button
-                onClick={async () => {
-                  setIsOpen(false);
-                  if (connected) {
-                    navigate('/dashboard');
-                  } else {
+              {connected ? (
+                <div className="flex flex-col gap-3">
+                  <div className="flex items-center justify-center gap-2 py-2">
+                    <div className={`w-2 h-2 rounded-full ${profile?.walletType === 'external' ? 'bg-[#00ffe6]' : 'bg-purple-400'}`} />
+                    <span className="font-mono text-xs text-[#99a1af]">{truncatedAddress}</span>
+                  </div>
+                  <button
+                    onClick={() => {
+                      setIsOpen(false);
+                      handleDisconnect();
+                    }}
+                    className="w-full flex items-center justify-center gap-2 rounded-xl bg-white/5 border border-white/10 py-3 text-sm text-[#99a1af] hover:text-white transition-colors"
+                  >
+                    <LogOut size={16} />
+                    Desconectar
+                  </button>
+                </div>
+              ) : (
+                <button
+                  onClick={async () => {
+                    setIsOpen(false);
                     await handleConnect();
-                  }
-                }}
-                disabled={isLoading}
-                className="w-full flex items-center justify-center gap-2 rounded-xl bg-[#00ffe6] py-3 font-bold text-black shadow-lg shadow-[#00ffe6]/20 disabled:opacity-60"
-              >
-                {isLoading ? <Loader2 size={20} className="animate-spin" /> : <Wallet size={20} />}
-                {connected ? 'Mi Panel' : isLoading ? 'Conectando...' : 'Conectar'}
-              </button>
+                  }}
+                  disabled={isLoading}
+                  className="w-full flex items-center justify-center gap-2 rounded-xl bg-[#00ffe6] py-3 font-bold text-black shadow-lg shadow-[#00ffe6]/20 disabled:opacity-60"
+                >
+                  {isLoading ? <Loader2 size={20} className="animate-spin" /> : <Wallet size={20} />}
+                  {isLoading ? 'Conectando...' : 'Conectar'}
+                </button>
+              )}
             </div>
           </motion.div>
         )}

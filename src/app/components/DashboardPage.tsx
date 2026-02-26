@@ -20,10 +20,9 @@ export const DashboardPage = () => {
 
   return (
     <>
-      <Navbar onConnect={handleConnect} isConnected={isConnected} />
+      <Navbar onConnect={handleConnect} onDisconnect={handleDisconnect} isConnected={isConnected} />
       <Dashboard
         balance={profile?.tokenBalance ?? 0}
-        onDisconnect={handleDisconnect}
       />
       <Footer />
     </>
