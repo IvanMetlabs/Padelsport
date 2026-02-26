@@ -257,6 +257,11 @@ export const AuthProviderInner: React.FC<{ children: React.ReactNode }> = ({ chi
       await web3AuthConnect();
       // Close the Web3Auth modal immediately so it doesn't linger empty
       try { web3Auth?.loginModal?.closeModal(); } catch {}
+      // Verify the connection actually succeeded (user may have closed the modal)
+      if (!web3Auth?.connected) {
+        setLoading(false);
+        return false;
+      }
       return true;
     } catch (err: any) {
       setLoading(false);
